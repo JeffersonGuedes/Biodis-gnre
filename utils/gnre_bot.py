@@ -842,6 +842,10 @@ class GNREBot:
         """Clica no botão Validar"""
         try:
             print("⚙️ Clicando em Validar...")
+            
+            # Salvar screenshot antes de validar
+            self._salvar_evidencia("05_antes_validar")
+            
             btn_validar = self.wait.until(
                 EC.element_to_be_clickable((By.NAME, "btnValidar"))
             )
@@ -849,13 +853,63 @@ class GNREBot:
             print("⏳ Aguardando validação...")
             time.sleep(5)
             
+            # Salvar screenshot após validar
+            self._salvar_evidencia("06_apos_validar")
+            
             # Verificar se foi redirecionado para página de resultado
-            if "resultado" in self.driver.current_url:
+            url_atual = self.driver.current_url
+            print(f"🔗 URL após validação: {url_atual}")
+            
+            if "resultado" in url_atual:
                 print("✅ Redirecionado para página de resultado")
             else:
-                print(f"ℹ️ URL atual: {self.driver.current_url}")
+                print(f"⚠️ NÃO redirecionado para página de resultado!")
+                print(f"   URL atual: {url_atual}")
+                
+                # Procurar mensagens de erro na página
+                try:
+                    # Procurar por mensagens de erro comuns
+                    erros_possiveis = [
+                        (By.CLASS_NAME, "erro"),
+                        (By.CLASS_NAME, "error"),
+                        (By.CLASS_NAME, "mensagem-erro"),
+                        (By.XPATH, "//*[contains(@class, 'erro')]"),
+                        (By.XPATH, "//*[contains(text(), 'erro')]"),
+                        (By.XPATH, "//*[contains(text(), 'Erro')]"),
+                        (By.XPATH, "//*[contains(text(), 'inválido')]"),
+                        (By.XPATH, "//*[contains(text(), 'obrigatório')]"),
+                    ]
+                    
+                    mensagens_encontradas = []
+                    for locator_type, locator_value in erros_possiveis:
+                        try:
+                            elementos = self.driver.find_elements(locator_type, locator_value)
+                            for elem in elementos:
+                                texto = elem.text.strip()
+                                if texto and len(texto) > 3:  # Ignorar textos muito curtos
+                                    mensagens_encontradas.append(texto)
+                        except:
+                            continue
+                    
+                    if mensagens_encontradas:
+                        print("❌ Mensagens de erro encontradas na página:")
+                        for msg in set(mensagens_encontradas[:5]):  # Mostrar até 5 mensagens únicas
+                            print(f"   • {msg}")
+                    else:
+                        print("   ℹ️ Nenhuma mensagem de erro explícita encontrada")
+                        print("   💡 Pode ser problema de timeout ou campo inválido")
+                    
+                    # Tentar pegar o HTML da página para análise
+                    page_source = self.driver.page_source
+                    if 'alert' in page_source.lower() or 'erro' in page_source.lower():
+                        print("   ⚠️ Detectado possível alerta/erro no HTML da página")
+                    
+                except Exception as e:
+                    print(f"   ⚠️ Erro ao buscar mensagens: {str(e)}")
             
         except Exception as e:
+            print(f"❌ Erro ao validar formulário: {str(e)}")
+            self._salvar_evidencia("erro_validacao")
             raise Exception(f"Erro ao validar formulário: {str(e)}")
     
     def _gerar_gnre(self):
