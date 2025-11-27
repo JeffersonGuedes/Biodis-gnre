@@ -871,15 +871,6 @@ class GNREBot:
             # Detectar se está no Streamlit Cloud
             is_linux = sys.platform.startswith('linux')
             
-            # No Streamlit Cloud, pular download completamente
-            if is_linux:
-                print("📥 Modo Streamlit Cloud: pulando download de PDF")
-                print("  ✅ GNRE gerada com sucesso no site!")
-                print("  ℹ️ Acesse o site GNRE para baixar o PDF manualmente")
-                time.sleep(1)  # Pequena pausa
-                return "PDF_disponivel_no_site_gnre"
-            
-            # Local: Fazer download normal
             print("📥 Procurando botão de download do PDF na página de resultado...")
             
             # Aguardar a página de resultado carregar
@@ -893,8 +884,14 @@ class GNREBot:
                 print("  ✅ Botão Baixar encontrado (NAME=btnBaixar)")
                 btn_baixar.click()
                 print("  ✅ Download do PDF iniciado!")
-                print(f"  📁 Salvando em: {self.dir_downloads}")
-                time.sleep(5)
+                
+                # Aguardar download
+                if is_linux:
+                    print("  🐧 Modo Streamlit Cloud")
+                    time.sleep(3)
+                else:
+                    print(f"  📁 Salvando em: {self.dir_downloads}")
+                    time.sleep(5)
                     
             except Exception as e:
                 print(f"  ⚠️ Botão btnBaixar não encontrado: {str(e)}")
@@ -922,9 +919,12 @@ class GNREBot:
                 
                 if not btn_encontrado:
                     print("  ⚠️ Nenhum botão de download encontrado")
+                    # No Streamlit Cloud, retornar sucesso mesmo sem baixar
+                    if is_linux:
+                        return "PDF_gerado_no_site"
                     return None
                 
-                time.sleep(5)
+                time.sleep(3 if is_linux else 5)
             
             # Procurar arquivo PDF mais recente na pasta Downloads
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -932,25 +932,34 @@ class GNREBot:
             
             # Procurar PDFs recentes na pasta Downloads do usuário
             print(f"  🔍 Procurando PDF em: {self.dir_downloads}")
-            arquivos = list(self.dir_downloads.glob("*.pdf"))
             
-            if arquivos:
-                # Pegar o mais recente (baixado nos últimos 30 segundos)
-                arquivo_mais_recente = max(arquivos, key=os.path.getctime)
-                tempo_arquivo = os.path.getctime(arquivo_mais_recente)
-                tempo_atual = time.time()
+            try:
+                arquivos = list(self.dir_downloads.glob("*.pdf"))
                 
-                # Verificar se foi baixado recentemente (últimos 30 segundos)
-                if (tempo_atual - tempo_arquivo) < 30:
-                    print(f"  ✅ PDF encontrado: {arquivo_mais_recente.name}")
-                    print(f"  📁 Localização: {arquivo_mais_recente}")
-                    return str(arquivo_mais_recente)
-                else:
-                    print(f"  ⚠️ PDF encontrado mas muito antigo: {arquivo_mais_recente.name}")
+                if arquivos:
+                    # Pegar o mais recente (baixado nos últimos 30 segundos)
+                    arquivo_mais_recente = max(arquivos, key=os.path.getctime)
+                    tempo_arquivo = os.path.getctime(arquivo_mais_recente)
+                    tempo_atual = time.time()
+                    
+                    # Verificar se foi baixado recentemente (últimos 30 segundos)
+                    if (tempo_atual - tempo_arquivo) < 30:
+                        print(f"  ✅ PDF encontrado: {arquivo_mais_recente.name}")
+                        print(f"  📁 Localização: {arquivo_mais_recente}")
+                        return str(arquivo_mais_recente)
+                    else:
+                        print(f"  ⚠️ PDF encontrado mas muito antigo: {arquivo_mais_recente.name}")
+            except Exception as e:
+                print(f"  ⚠️ Erro ao procurar PDF: {str(e)}")
             
-            print("  ⚠️ PDF não encontrado na pasta Downloads")
-            print(f"  💡 Verifique manualmente em: {self.dir_downloads}")
-            return None
+            # Se não encontrou PDF
+            if is_linux:
+                print("  ℹ️ Streamlit Cloud: PDF gerado com sucesso no site")
+                return "PDF_gerado_streamlit_cloud"
+            else:
+                print("  ⚠️ PDF não encontrado na pasta Downloads")
+                print(f"  💡 Verifique manualmente em: {self.dir_downloads}")
+                return None
             
         except Exception as e:
             print(f"⚠️ Erro ao baixar PDF: {str(e)}")

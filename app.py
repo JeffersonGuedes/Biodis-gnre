@@ -167,7 +167,12 @@ def exibir_tabela_dados(dados_extraidos: List[Dict]):
             })
     
     df = pd.DataFrame(tabela)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(
+        df, 
+        use_container_width=True, 
+        hide_index=True,
+        height=400  # Altura fixa para melhor visualização
+    )
     
     return df
 
@@ -242,18 +247,33 @@ def exibir_resultados_emissao(resultados: List[Dict]):
     # Preparar dados
     tabela = []
     for r in resultados:
+        # Formatar PDF path
+        pdf_info = r.get('arquivo_pdf', '-')
+        if pdf_info and pdf_info not in ['-', 'None']:
+            if 'streamlit_cloud' in pdf_info or 'site_gnre' in pdf_info or 'site' in pdf_info:
+                pdf_display = '✅ Gerado no site'
+            else:
+                # Pegar só o nome do arquivo
+                pdf_display = Path(pdf_info).name if pdf_info else '-'
+        else:
+            pdf_display = '-'
+        
         tabela.append({
             'Arquivo': r['arquivo'],
             'NF-e': r['nfe'],
             'Status': '✅ Sucesso' if r['sucesso'] else '❌ Erro',
             'Número GNRE': r.get('numero_gnre', '-'),
-            'Protocolo': r.get('protocolo', '-'),
-            'PDF': r.get('arquivo_pdf', '-'),
+            'PDF': pdf_display,
             'Mensagem': r.get('mensagem', 'OK')
         })
     
     df = pd.DataFrame(tabela)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(
+        df, 
+        use_container_width=True, 
+        hide_index=True,
+        height=400  # Mesma altura da tabela de processamento
+    )
     
     # Estatísticas
     col1, col2, col3 = st.columns(3)
