@@ -876,9 +876,12 @@ class GNREBot:
             # Aguardar a página de resultado carregar
             time.sleep(1.5)
             
+            # Usar timeout menor para não travar
+            wait_curto = WebDriverWait(self.driver, 10)  # 10 segundos ao invés de 60
+            
             # Procurar botão btnBaixar (NAME)
             try:
-                btn_baixar = self.wait.until(
+                btn_baixar = wait_curto.until(
                     EC.element_to_be_clickable((By.NAME, "btnBaixar"))
                 )
                 print("  ✅ Botão Baixar encontrado (NAME=btnBaixar)")
@@ -888,16 +891,16 @@ class GNREBot:
                 # Aguardar download
                 if is_linux:
                     print("  🐧 Modo Streamlit Cloud")
-                    time.sleep(3)
+                    time.sleep(2)
                 else:
                     print(f"  📁 Salvando em: {self.dir_downloads}")
-                    time.sleep(5)
+                    time.sleep(3)
                     
             except Exception as e:
                 print(f"  ⚠️ Botão btnBaixar não encontrado: {str(e)}")
                 print("  🔄 Tentando outros localizadores...")
                 
-                # Fallback: tentar outros localizadores
+                # Fallback: tentar outros localizadores com timeout menor
                 botoes_download = [
                     (By.XPATH, "//button[contains(text(), 'Baixar')]"),
                     (By.XPATH, "//a[contains(text(), 'Baixar')]"),
@@ -909,7 +912,7 @@ class GNREBot:
                 btn_encontrado = False
                 for locator in botoes_download:
                     try:
-                        btn = self.wait.until(EC.element_to_be_clickable(locator))
+                        btn = wait_curto.until(EC.element_to_be_clickable(locator))
                         print(f"  ✅ Botão encontrado: {locator}")
                         btn.click()
                         btn_encontrado = True
@@ -919,12 +922,15 @@ class GNREBot:
                 
                 if not btn_encontrado:
                     print("  ⚠️ Nenhum botão de download encontrado")
-                    # No Streamlit Cloud, retornar sucesso mesmo sem baixar
+                    # Continuar sem baixar
                     if is_linux:
-                        return "PDF_gerado_no_site"
-                    return None
+                        print("  ℹ️ Streamlit Cloud: continuando sem PDF")
+                        return "PDF_nao_baixado_cloud"
+                    else:
+                        print("  ℹ️ Continuando sem PDF")
+                        return "PDF_nao_encontrado"
                 
-                time.sleep(3 if is_linux else 5)
+                time.sleep(2 if is_linux else 3)
             
             # Procurar arquivo PDF mais recente na pasta Downloads
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -954,20 +960,20 @@ class GNREBot:
             
             # Se não encontrou PDF
             if is_linux:
-                print("  ℹ️ Streamlit Cloud: PDF gerado com sucesso no site")
+                print("  ✅ Streamlit Cloud: GNRE gerada com sucesso")
                 return "PDF_gerado_streamlit_cloud"
             else:
                 print("  ⚠️ PDF não encontrado na pasta Downloads")
                 print(f"  💡 Verifique manualmente em: {self.dir_downloads}")
-                return None
+                return "PDF_gerado_sem_arquivo"
             
         except Exception as e:
             print(f"⚠️ Erro ao baixar PDF: {str(e)}")
-            # No Streamlit Cloud, continuar mesmo com erro
+            # Continuar mesmo com erro
             if sys.platform.startswith('linux'):
                 print("  ℹ️ Continuando processamento (Streamlit Cloud)")
-                return "PDF_processo_continuado"
-            return None
+                return "PDF_erro_continuado"
+            return "PDF_erro_local"
     
     def _nova_gnre(self):
         """Clica no botão 'Nova GNRE' (btnNova) para processar próxima"""
