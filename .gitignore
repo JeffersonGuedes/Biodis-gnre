@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Diretórios do projeto
+outputs/*.pdf
+screenshots/*.png
+temp_xmls/*.xml
+logs/*.log
+
+# Manter estrutura de pastas
+!outputs/.gitkeep
+!screenshots/.gitkeep
+!temp_xmls/.gitkeep
+!logs/.gitkeep
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Credenciais
+.env
+.env.local
+credentials.json
+*.key
+
+# Temporários
+*.tmp
+*.bak
+*.cache
