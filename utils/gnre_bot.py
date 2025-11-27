@@ -868,10 +868,19 @@ class GNREBot:
     def _baixar_pdf(self, numero_nfe):
         """Baixa o PDF da GNRE após validação na página de resultado"""
         try:
-            print("📥 Procurando botão de download do PDF na página de resultado...")
-            
             # Detectar se está no Streamlit Cloud
             is_linux = sys.platform.startswith('linux')
+            
+            # No Streamlit Cloud, pular download completamente
+            if is_linux:
+                print("📥 Modo Streamlit Cloud: pulando download de PDF")
+                print("  ✅ GNRE gerada com sucesso no site!")
+                print("  ℹ️ Acesse o site GNRE para baixar o PDF manualmente")
+                time.sleep(1)  # Pequena pausa
+                return "PDF_disponivel_no_site_gnre"
+            
+            # Local: Fazer download normal
+            print("📥 Procurando botão de download do PDF na página de resultado...")
             
             # Aguardar a página de resultado carregar
             time.sleep(1.5)
@@ -884,14 +893,8 @@ class GNREBot:
                 print("  ✅ Botão Baixar encontrado (NAME=btnBaixar)")
                 btn_baixar.click()
                 print("  ✅ Download do PDF iniciado!")
-                
-                # No Streamlit Cloud, reduzir tempo de espera
-                if is_linux:
-                    print("  🐧 Ambiente Linux: tempo de espera reduzido")
-                    time.sleep(2)  # Menos tempo no cloud
-                else:
-                    print(f"  📁 Salvando em: {self.dir_downloads}")
-                    time.sleep(5)  # Tempo normal local
+                print(f"  📁 Salvando em: {self.dir_downloads}")
+                time.sleep(5)
                     
             except Exception as e:
                 print(f"  ⚠️ Botão btnBaixar não encontrado: {str(e)}")
@@ -919,21 +922,11 @@ class GNREBot:
                 
                 if not btn_encontrado:
                     print("  ⚠️ Nenhum botão de download encontrado")
-                    # No Streamlit Cloud, não falhar por causa do PDF
-                    if is_linux:
-                        print("  ℹ️ Continuando sem PDF (Streamlit Cloud)")
-                        return "PDF_gerado_no_site"
                     return None
                 
-                time.sleep(2 if is_linux else 5)
+                time.sleep(5)
             
-            # No Streamlit Cloud, não procurar arquivo (não temos acesso ao sistema de arquivos do navegador)
-            if is_linux:
-                print("  ✅ PDF gerado com sucesso no site!")
-                print("  ℹ️ No Streamlit Cloud, o PDF fica disponível apenas no navegador do site")
-                return "PDF_disponivel_no_site"
-            
-            # Local: Procurar arquivo PDF mais recente na pasta Downloads
+            # Procurar arquivo PDF mais recente na pasta Downloads
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             nome_pdf_esperado = f"GNRE_{numero_nfe}_{timestamp}.pdf"
             
