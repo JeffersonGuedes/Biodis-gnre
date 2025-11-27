@@ -317,7 +317,7 @@ def main():
         # Botão para processar XMLs
         col1, col2 = st.columns([1, 4])
         with col1:
-            processar = st.button("🔍 Processar XMLs", use_column_width=True)
+            processar = st.button("🔍 Processar XMLs")
         
         if processar:
             with st.spinner("Processando XMLs..."):
@@ -351,7 +351,7 @@ def main():
             
             col1, col2, col3 = st.columns([1, 1, 3])
             with col1:
-                if st.button("🚀 Emitir GNREs", use_column_width=True):
+                if st.button("🚀 Emitir GNREs"):
                     processar_emissao_gnre(
                         st.session_state.dados_extraidos,
                         None,  # Não usado
@@ -359,7 +359,7 @@ def main():
                     )
             
             with col2:
-                if st.button("🔄 Limpar", use_column_width=True):
+                if st.button("🔄 Limpar"):
                     st.session_state.dados_extraidos = []
                     st.rerun()
     
