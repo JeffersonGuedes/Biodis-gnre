@@ -5,6 +5,7 @@ SEM LOGIN - Acesso direto ao formulário de emissão
 
 import time
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -170,7 +171,10 @@ class GNREBot:
         """Inicializa o driver do Selenium"""
         options = webdriver.ChromeOptions()
         
-        if self.headless:
+        # Detectar se está rodando no Streamlit Cloud (Linux)
+        is_linux = sys.platform.startswith('linux')
+        
+        if self.headless or is_linux:
             options.add_argument('--headless')
         
         options.add_argument('--no-sandbox')
@@ -178,6 +182,8 @@ class GNREBot:
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--start-maximized')
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--disable-extensions')
         
         # Configurar download para pasta Downloads do usuário
         prefs = {
@@ -189,7 +195,37 @@ class GNREBot:
         }
         options.add_experimental_option("prefs", prefs)
         
-        service = Service(ChromeDriverManager().install())
+        # Streamlit Cloud (Linux) - usar chromium do sistema
+        if is_linux:
+            print("🐧 Detectado ambiente Linux (Streamlit Cloud)")
+            
+            # Procurar chromedriver no sistema
+            chrome_driver_paths = [
+                '/usr/bin/chromedriver',
+                '/usr/local/bin/chromedriver',
+                '/home/appuser/.local/bin/chromedriver',
+            ]
+            
+            driver_path = None
+            for path in chrome_driver_paths:
+                if os.path.exists(path):
+                    driver_path = path
+                    print(f"✅ ChromeDriver encontrado: {path}")
+                    break
+            
+            if driver_path:
+                # Configurar chromium binary
+                options.binary_location = '/usr/bin/chromium'
+                service = Service(executable_path=driver_path)
+            else:
+                # Fallback: tentar webdriver-manager
+                print("⚠️ ChromeDriver não encontrado no sistema, tentando webdriver-manager...")
+                service = Service(ChromeDriverManager().install())
+        else:
+            # Windows/Mac - usar webdriver-manager
+            print("💻 Detectado ambiente local (Windows/Mac)")
+            service = Service(ChromeDriverManager().install())
+        
         self.driver = webdriver.Chrome(service=service, options=options)
         self.wait = WebDriverWait(self.driver, 60)
     
