@@ -103,16 +103,21 @@ def exibir_sidebar():
         st.markdown("### Opções de Execução")
         
         headless = st.checkbox(
-            "Modo Headless",
+            "🕶️ Modo Headless (Navegador Invisível)",
             value=False,
-            help="RECOMENDADO DESABILITAR para ver o preenchimento acontecendo"
+            help="✅ DESMARCADO (Padrão Local): Você verá o navegador trabalhando\n❌ MARCADO: Navegador roda invisível (mais rápido, obrigatório no Streamlit Cloud)"
         )
         
         evidencias = st.checkbox(
-            "Salvar Evidências",
+            "📸 Salvar Screenshots",
             value=True,
-            help="Salvar screenshots durante o processo"
+            help="Salva capturas de tela durante o processo para debug"
         )
+        
+        # Informação sobre ambiente
+        import sys
+        if sys.platform.startswith('linux'):
+            st.info("🐧 **Streamlit Cloud detectado**: Modo headless ativado automaticamente")
         
         st.session_state.opcao_headless = headless
         st.session_state.opcao_evidencias = evidencias

@@ -963,6 +963,18 @@ class GNREBot:
     def _nova_gnre(self):
         """Clica no botão 'Nova GNRE' (btnNova) para processar próxima"""
         try:
+            # Detectar se está no Streamlit Cloud
+            is_linux = sys.platform.startswith('linux')
+            
+            # No Streamlit Cloud, recarregar página diretamente (mais rápido e confiável)
+            if is_linux:
+                print("🔄 Modo Streamlit Cloud: recarregando página de emissão...")
+                self.driver.get(self.url_emissao)
+                time.sleep(1.5)
+                print("  ✅ Página recarregada - pronto para próxima GNRE")
+                return
+            
+            # Local: Tentar clicar no botão Nova GNRE
             print("🔄 Procurando botão Nova GNRE...")
             
             # Aguardar um pouco após download
