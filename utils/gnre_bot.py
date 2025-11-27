@@ -874,10 +874,29 @@ class GNREBot:
             print("📥 Procurando botão de download do PDF na página de resultado...")
             
             # Aguardar a página de resultado carregar
-            time.sleep(1.5)
+            time.sleep(2)
+            
+            # Verificar se estamos na página de resultado
+            url_atual = self.driver.current_url
+            print(f"  🔗 URL atual: {url_atual}")
+            
+            if "resultado" not in url_atual:
+                print("  ⚠️ Não está na página de resultado!")
+                print("  ℹ️ Pode ter havido erro na validação ou GNRE já gerada")
+                
+                # Tentar capturar mensagem de erro
+                try:
+                    erros = self.driver.find_elements(By.CLASS_NAME, "erro")
+                    if erros:
+                        for erro in erros:
+                            print(f"  ❌ Erro encontrado: {erro.text}")
+                except:
+                    pass
+                
+                return "GNRE_erro_validacao"
             
             # Usar timeout menor para não travar
-            wait_curto = WebDriverWait(self.driver, 10)  # 10 segundos ao invés de 60
+            wait_curto = WebDriverWait(self.driver, 10)
             
             # Procurar botão btnBaixar (NAME) - verificar se existe
             try:
@@ -948,11 +967,9 @@ class GNREBot:
                     
             except Exception as e:
                 print(f"  ⚠️ Botão btnBaixar não encontrado: {str(e)}")
-                # Se não encontrar botão, considerar sucesso (GNRE foi gerada)
-                if is_linux:
-                    print("  ℹ️ GNRE gerada com sucesso (sem botão download)")
-                    return "PDF_gerado_sem_botao"
-                return "PDF_gerado_sem_download"
+                # Verificar se GNRE foi gerada mesmo sem botão
+                print("  ℹ️ GNRE pode ter sido gerada, mas botão de download não está disponível")
+                return "GNRE_gerada_sem_botao_download"
             
             # Procurar arquivo PDF na pasta Downloads
             print(f"  🔍 Procurando PDF em: {self.dir_downloads}")
@@ -983,17 +1000,17 @@ class GNREBot:
             # Se não encontrou PDF mas GNRE foi gerada
             print("  ✅ GNRE gerada com sucesso")
             if is_linux:
-                print("  ℹ️ Streamlit Cloud: PDF pode estar no container temporário")
-                return "PDF_gerado_cloud_ok"
+                print("  ℹ️ Streamlit Cloud: PDF disponível no site GNRE")
+                return "GNRE_gerada_cloud_ok"
             else:
-                print("  ℹ️ PDF pode estar em outra pasta ou ainda baixando")
-                return "PDF_gerado_local_ok"
+                print("  ℹ️ PDF pode estar em Downloads ou ainda processando")
+                return "GNRE_gerada_local_ok"
             
         except Exception as e:
-            print(f"⚠️ Erro ao baixar PDF: {str(e)}")
-            # GNRE foi gerada, só não conseguimos o PDF
-            print("  ✅ GNRE gerada (erro no download do PDF)")
-            return "PDF_gerado_com_erro"
+            print(f"⚠️ Erro ao processar PDF: {str(e)}")
+            # GNRE pode ter sido gerada
+            print("  ℹ️ Verificar manualmente no site GNRE")
+            return "GNRE_erro_download"
     
     def _nova_gnre(self):
         """Clica no botão 'Nova GNRE' (btnNova) para processar próxima"""

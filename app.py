@@ -169,7 +169,7 @@ def exibir_tabela_dados(dados_extraidos: List[Dict]):
     df = pd.DataFrame(tabela)
     st.dataframe(
         df, 
-        use_container_width=True, 
+        width='stretch', 
         hide_index=True,
         height=400  # Altura fixa para melhor visualização
     )
@@ -270,7 +270,7 @@ def exibir_resultados_emissao(resultados: List[Dict]):
     df = pd.DataFrame(tabela)
     st.dataframe(
         df, 
-        use_container_width=True, 
+        width='stretch', 
         hide_index=True,
         height=400  # Mesma altura da tabela de processamento
     )
@@ -317,7 +317,7 @@ def main():
         # Botão para processar XMLs
         col1, col2 = st.columns([1, 4])
         with col1:
-            processar = st.button("🔍 Processar XMLs", use_container_width=True)
+            processar = st.button("🔍 Processar XMLs", use_column_width=True)
         
         if processar:
             with st.spinner("Processando XMLs..."):
@@ -351,7 +351,7 @@ def main():
             
             col1, col2, col3 = st.columns([1, 1, 3])
             with col1:
-                if st.button("🚀 Emitir GNREs", use_container_width=True):
+                if st.button("🚀 Emitir GNREs", use_column_width=True):
                     processar_emissao_gnre(
                         st.session_state.dados_extraidos,
                         None,  # Não usado
@@ -359,7 +359,7 @@ def main():
                     )
             
             with col2:
-                if st.button("🔄 Limpar", use_container_width=True):
+                if st.button("🔄 Limpar", use_column_width=True):
                     st.session_state.dados_extraidos = []
                     st.rerun()
     

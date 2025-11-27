@@ -47,7 +47,7 @@ def extrair_dados_nfe(caminho_xml: str) -> Optional[Dict]:
         total = infNFe.find('.//nfe:ICMSTot', namespaces=NSMAP)
         ide = infNFe.find('nfe:ide', namespaces=NSMAP)
         
-        if not all([emit, dest, total, ide]):
+        if not all([elem is not None for elem in [emit, dest, total, ide]]):
             print(f"⚠️ Elementos obrigatórios ausentes no XML")
             return None
         
@@ -68,12 +68,12 @@ def extrair_dados_nfe(caminho_xml: str) -> Optional[Dict]:
         
         # Endereço do emitente
         endereco_emit = emit.find('nfe:enderEmit', namespaces=NSMAP)
-        logradouro = _get_text(endereco_emit, 'nfe:xLgr') if endereco_emit else ''
-        numero = _get_text(endereco_emit, 'nfe:nro') if endereco_emit else ''
-        complemento = _get_text(endereco_emit, 'nfe:xCpl') if endereco_emit else ''
-        bairro = _get_text(endereco_emit, 'nfe:xBairro') if endereco_emit else ''
-        municipio_emit = _get_text(endereco_emit, 'nfe:xMun') if endereco_emit else ''
-        cep_emit = _get_text(endereco_emit, 'nfe:CEP') if endereco_emit else ''
+        logradouro = _get_text(endereco_emit, 'nfe:xLgr') if endereco_emit is not None else ''
+        numero = _get_text(endereco_emit, 'nfe:nro') if endereco_emit is not None else ''
+        complemento = _get_text(endereco_emit, 'nfe:xCpl') if endereco_emit is not None else ''
+        bairro = _get_text(endereco_emit, 'nfe:xBairro') if endereco_emit is not None else ''
+        municipio_emit = _get_text(endereco_emit, 'nfe:xMun') if endereco_emit is not None else ''
+        cep_emit = _get_text(endereco_emit, 'nfe:CEP') if endereco_emit is not None else ''
         
         # Montar endereço completo (sem complemento - removido BIODIS)
         partes_endereco = [logradouro, numero]
