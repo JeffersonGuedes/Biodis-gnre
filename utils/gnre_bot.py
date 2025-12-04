@@ -1,6 +1,6 @@
 """
 Bot de automação para emissão de GNRE no portal
-BLINDADO CONTRA ERROS "ELEMENT NOT INTERACTABLE" - VERSÃO 2.0
+BLINDADO CONTRA ERROS "ELEMENT NOT INTERACTABLE" - VERSÃO STREAMLIT CLOUD
 """
 
 import time
@@ -17,7 +17,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementNotInteractableException, StaleElementReferenceException
 
 from webdriver_manager.chrome import ChromeDriverManager
@@ -28,7 +27,8 @@ from webdriver_manager.core.os_manager import ChromeType
 # ==============================================================================
 
 FERIADOS_2025 = [datetime(2025, 1, 1), datetime(2025, 2, 24), datetime(2025, 2, 25), datetime(2025, 4, 18), datetime(2025, 4, 21), datetime(2025, 5, 1), datetime(2025, 6, 19), datetime(2025, 9, 7), datetime(2025, 10, 12), datetime(2025, 11, 2), datetime(2025, 11, 15), datetime(2025, 12, 25)]
-FERIADOS = FERIADOS_2025 
+FERIADOS_2026 = [datetime(2026, 1, 1), datetime(2026, 2, 16), datetime(2026, 2, 17), datetime(2026, 4, 3), datetime(2026, 4, 21), datetime(2026, 5, 1), datetime(2026, 6, 4), datetime(2026, 9, 7), datetime(2026, 10, 12), datetime(2026, 11, 2), datetime(2026, 11, 15), datetime(2026, 12, 25)]
+FERIADOS = FERIADOS_2025 + FERIADOS_2026
 
 def calcular_data_vencimento():
     agora = datetime.now()
@@ -64,11 +64,10 @@ class GNREBot:
         
         self.dir_outputs = Path("outputs")
         self.dir_screenshots = Path("screenshots")
-        self.dir_downloads = Path("downloads_temp")
+        self.dir_downloads = Path.home() / "Downloads"
         
         self.dir_outputs.mkdir(exist_ok=True)
         self.dir_screenshots.mkdir(exist_ok=True)
-        self.dir_downloads.mkdir(exist_ok=True)
 
     def _inicializar_driver(self):
         print("🚀 Inicializando driver...")
@@ -78,7 +77,6 @@ class GNREBot:
         if self.headless or is_linux:
             options.add_argument('--headless')
         
-        # Argumentos cruciais para evitar erros de renderização
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
@@ -102,99 +100,90 @@ class GNREBot:
                 service = Service(ChromeDriverManager().install())
             
             self.driver = webdriver.Chrome(service=service, options=options)
-            self.wait = WebDriverWait(self.driver, 45)  # Aumentado para Cloud
+            self.wait = WebDriverWait(self.driver, 45)
             print("✅ Driver OK")
         except Exception as e:
             raise Exception(f"Erro driver: {e}")
 
-    # --- NOVA LÓGICA DE CLIQUE MAIS AGRESSIVA ---
     def _clicar_seguro(self, locator_tuple=None, element=None, nome_elemento="elemento"):
-        """
-        Tenta clicar de múltiplas formas para garantir a interação
-        """
+        """Tenta clicar de múltiplas formas"""
         try:
-            # 1. Obter o elemento se não foi passado
             if element is None:
-                # Aguardar elemento estar CLICÁVEL (enabled + visible + not covered)
                 try:
                     element = self.wait.until(EC.element_to_be_clickable(locator_tuple))
                 except TimeoutException:
-                    # Fallback: aguardar apenas presença
                     element = self.wait.until(EC.presence_of_element_located(locator_tuple))
             
-            # 2. Forçar visibilidade do elemento
             self.driver.execute_script("""
                 arguments[0].style.display = 'block';
                 arguments[0].style.visibility = 'visible';
                 arguments[0].style.opacity = '1';
             """, element)
             
-            # 3. Scroll para garantir que está na viewport
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", element)
             time.sleep(0.8)
 
-            # 4. Tentativa 1: JavaScript Click (mais confiável em headless)
             try:
                 self.driver.execute_script("arguments[0].click();", element)
                 time.sleep(0.3)
                 return
             except Exception as e_js:
-                print(f"  ⚠️ JS Click falhou para {nome_elemento}: {e_js}")
+                print(f"  ⚠️ JS Click falhou: {e_js}")
 
-            # 5. Tentativa 2: Click normal do Selenium
             try:
                 element.click()
                 time.sleep(0.3)
                 return
             except Exception as e_click:
-                print(f"  ⚠️ Click normal falhou para {nome_elemento}: {e_click}")
+                print(f"  ⚠️ Click normal falhou: {e_click}")
 
-            # 6. Tentativa 3: ActionChains
-            try:
-                actions = ActionChains(self.driver)
-                actions.move_to_element(element).pause(0.5).click().perform()
-                time.sleep(0.3)
-                return
-            except Exception as e_action:
-                print(f"  ⚠️ ActionChains falhou para {nome_elemento}: {e_action}")
-                raise
+            actions = ActionChains(self.driver)
+            actions.move_to_element(element).pause(0.5).click().perform()
+            time.sleep(0.3)
 
         except Exception as e:
-            print(f"  ❌ ERRO CRÍTICO ao clicar em {nome_elemento}: {str(e)}")
+            print(f"  ❌ ERRO ao clicar em {nome_elemento}: {str(e)}")
             self._screenshot(f"erro_clique_{nome_elemento}")
             raise Exception(f"Impossível interagir com {nome_elemento}: {str(e)}")
 
     def _aguardar_loading(self):
-        """Espera cega para garantir que animações terminaram"""
         time.sleep(1.5)
 
     def _screenshot(self, nome):
         if self.salvar_evidencias and self.driver:
             caminho = self.dir_screenshots / f"{datetime.now().strftime('%H%M%S')}_{nome}.png"
-            try: self.driver.save_screenshot(str(caminho))
-            except: pass
+            try:
+                self.driver.save_screenshot(str(caminho))
+            except:
+                pass
 
     def emitir_gnre(self, usuario, senha, dados, callback_progresso=None):
         try:
-            if not self.driver: self._inicializar_driver()
+            if not self.driver:
+                self._inicializar_driver()
             
-            if callback_progresso: callback_progresso("Acessando...", 0.1)
+            if callback_progresso:
+                callback_progresso("Acessando...", 0.1)
             self.driver.get(self.url_emissao)
             self._aguardar_loading()
             
-            if callback_progresso: callback_progresso("Preenchendo...", 0.3)
+            if callback_progresso:
+                callback_progresso("Preenchendo...", 0.3)
             self._preencher_formulario(dados)
             self._screenshot("01_preenchido")
             
-            if callback_progresso: callback_progresso("Validando...", 0.5)
+            if callback_progresso:
+                callback_progresso("Validando...", 0.5)
             self._validar_formulario()
             self._screenshot("02_validado")
             
-            if callback_progresso: callback_progresso("Baixando...", 0.8)
+            if callback_progresso:
+                callback_progresso("Baixando...", 0.8)
             pdf = self._baixar_pdf(dados['numero_nfe'])
             
             self._nova_gnre()
-            if callback_progresso: callback_progresso("Fim!", 1.0)
+            if callback_progresso:
+                callback_progresso("Fim!", 1.0)
             
             return {'sucesso': True, 'arquivo_pdf': pdf}
             
@@ -204,29 +193,28 @@ class GNREBot:
             return {'sucesso': False, 'mensagem': str(e)}
 
     def _preencher_formulario(self, dados):
-        """Preenchimento Otimizado"""
+        """Preenchimento Otimizado com _clicar_seguro"""
         try:
             # 1. UF Favorecida
             print(f"📍 UF Destino: {dados['uf_destino']}")
             elem_uf = self.wait.until(EC.presence_of_element_located((By.NAME, "siglaUf")))
             Select(elem_uf).select_by_value(dados['uf_destino'])
-            time.sleep(2.5) # AUMENTEI O TEMPO: Carregamento AJAX da UF demora
+            time.sleep(2.5)
 
-            # 2. GNRE Simples (Radio) - Aguardar habilitação
-            print("📄 Aguardando radio GNRE Simples...")
+            # 2. GNRE Simples (Radio)
+            print("📄 GNRE Simples...")
             radio_simples = self.wait.until(EC.element_to_be_clickable((By.ID, "optGnreSimples")))
             self._clicar_seguro(element=radio_simples, nome_elemento="Radio Simples")
             time.sleep(1)
 
             # 3. Contribuinte: Não Inscrito (Radio)
-            print("📄 Aguardando radio Não Inscrito...")
-            time.sleep(1)
+            print("👤 Não Inscrito...")
             radio_nao_inscrito = self.wait.until(EC.element_to_be_clickable((By.ID, "optNaoInscrito")))
             self._clicar_seguro(element=radio_nao_inscrito, nome_elemento="Radio Nao Inscrito")
             time.sleep(1)
             
             # 4. Tipo Doc: CNPJ (Radio)
-            print("📄 Aguardando radio CNPJ...")
+            print("🏢 CNPJ...")
             radio_cnpj = self.wait.until(EC.element_to_be_clickable((By.ID, "tipoCNPJ")))
             self._clicar_seguro(element=radio_cnpj, nome_elemento="Radio CNPJ")
             time.sleep(1)
@@ -243,8 +231,10 @@ class GNREBot:
             self.driver.find_element(By.ID, "razaoSocialEmitente").send_keys(dados.get('razao_social', ''))
 
             # 7. Endereço
-            try: elem_end = self.driver.find_element(By.ID, "enderecoEmitente")
-            except: elem_end = self.driver.find_element(By.NAME, "gnre.dadosGnre.enderecoEmitente")
+            try:
+                elem_end = self.driver.find_element(By.ID, "enderecoEmitente")
+            except:
+                elem_end = self.driver.find_element(By.NAME, "gnre.dadosGnre.enderecoEmitente")
             elem_end.send_keys(dados.get('endereco_emitente', ''))
 
             # 8. UF Emitente
@@ -255,14 +245,15 @@ class GNREBot:
             try:
                 mun = dados.get('municipio_emitente', '').upper()
                 Select(self.driver.find_element(By.NAME, "gnre.dadosGnre.municipioEmitente")).select_by_visible_text(mun)
-            except: pass
+            except:
+                pass
 
             # 10. CEP
             self.driver.find_element(By.ID, "cepEmitente").send_keys(''.join(filter(str.isdigit, dados.get('cep_emitente', ''))))
 
             # 11. Receita 100102
             Select(self.driver.find_element(By.ID, "receita")).select_by_value("100102")
-            time.sleep(2.5) # AUMENTEI O TEMPO: Carregamento AJAX da Receita
+            time.sleep(2.5)
 
             # 12. Doc Origem
             elem_doc = self.wait.until(EC.presence_of_element_located((By.NAME, "gnre.dadosGnre.itens[0].documentoOrigem.tipo")))
@@ -285,55 +276,55 @@ class GNREBot:
             elem_valor = self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].valores[0].valor")
             elem_valor.clear()
             elem_valor.send_keys(valor)
-            # Forçar update do valor
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", elem_valor)
-            self.driver.execute_script("arguments[0].blur();", elem_valor)  # Trigger onblur
-            time.sleep(2.5) # AUMENTADO: Esperar o site processar o valor e habilitar destinatário
+            self.driver.execute_script("arguments[0].blur();", elem_valor)
+            time.sleep(2.5)
 
-            # 18. Destinatário Não Inscrito (PONTO CRÍTICO - AGUARDAR HABILITAÇÃO)
-            print("👤 Aguardando habilitação dos campos de Destinatário...")
-            
-            # Aguardar explicitamente o elemento estar habilitado
+            # 18. Destinatário Não Inscrito (AGUARDAR HABILITAÇÃO)
+            print("👤 Aguardando habilitar Destinatário...")
             radio_dest = self.wait.until(EC.presence_of_element_located((By.ID, "optNaoInscritoDest")))
-            for tentativa in range(10):
+            for _ in range(10):
                 if radio_dest.is_enabled() and radio_dest.is_displayed():
                     break
                 time.sleep(0.5)
             
-            print("👤 Selecionando Destinatário Não Inscrito...")
-            self._clicar_seguro(element=radio_dest, nome_elemento="Radio Destinatário Nao Inscrito")
-            
+            print("👤 Selecionando Destinatário...")
+            self._clicar_seguro(element=radio_dest, nome_elemento="Radio Destinatário")
             time.sleep(1.5)
             
-            # Aguardar radio CPF estar habilitado
+            # 19. CPF Destinatário
             radio_cpf = self.wait.until(EC.presence_of_element_located((By.ID, "tipoCPFDest")))
-            for tentativa in range(10):
+            for _ in range(10):
                 if radio_cpf.is_enabled() and radio_cpf.is_displayed():
                     break
                 time.sleep(0.5)
             
             print("👤 Selecionando CPF...")
-            self._clicar_seguro(element=radio_cpf, nome_elemento="Radio CPF Destinatário")
+            self._clicar_seguro(element=radio_cpf, nome_elemento="Radio CPF")
+            time.sleep(1)
 
-            # 19. CPF Destinatário
+            # 20. CPF
             cpf_dest = ''.join(filter(str.isdigit, dados.get('documento_destinatario', '')))
             self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].destinatarioCpf").send_keys(cpf_dest)
 
-            # 20. Nome Destinatário
+            # 21. Nome Destinatário
             self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].razaoSocialDestinatario").send_keys(dados.get('nome_destinatario', ''))
 
-            # 21. Município Destino
+            # 22. Município Destino
             try:
                 mun_dest = dados.get('municipio_destinatario', '').upper()
                 Select(self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].municipioDestinatario")).select_by_visible_text(mun_dest)
-            except: pass
+            except:
+                pass
 
-            # 22. Campo Adicional
+            # 23. Campo Adicional
             if dados.get('chave_nfe_referenciada'):
-                try: self.driver.find_element(By.ID, "campoAdicional00").send_keys(dados['chave_nfe_referenciada'])
-                except: pass
+                try:
+                    self.driver.find_element(By.ID, "campoAdicional00").send_keys(dados['chave_nfe_referenciada'])
+                except:
+                    pass
 
-            # 23. Pagamento
+            # 24. Pagamento
             self.driver.find_element(By.NAME, "gnre.dadosGnre.dataPagamento").send_keys(venc)
 
             print("✅ Formulário preenchido")
@@ -350,14 +341,15 @@ class GNREBot:
         erros = self.driver.find_elements(By.CLASS_NAME, "erro")
         if erros:
             msgs = [e.text for e in erros if e.text.strip()]
-            if msgs: raise Exception(f"Erro Validação: {', '.join(msgs)}")
+            if msgs:
+                raise Exception(f"Erro Validação: {', '.join(msgs)}")
 
     def _baixar_pdf(self, nfe):
         try:
             try:
                 self._clicar_seguro(locator_tuple=(By.NAME, "btnBaixar"), nome_elemento="Botão Baixar")
-            except: 
-                print("Botão baixar não encontrado, tentando url direta...")
+            except:
+                print("Botão baixar não encontrado...")
 
             nome_final = self.dir_downloads / f"GNRE_{nfe}.pdf"
             for _ in range(20):
@@ -374,8 +366,10 @@ class GNREBot:
             return None
 
     def _nova_gnre(self):
-        try: self.driver.get(self.url_emissao)
-        except: pass
+        try:
+            self.driver.get(self.url_emissao)
+        except:
+            pass
 
     def fechar(self):
         if self.driver:
