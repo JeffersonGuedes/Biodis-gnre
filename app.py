@@ -169,7 +169,7 @@ def exibir_tabela_dados(dados_extraidos: List[Dict]):
     df = pd.DataFrame(tabela)
     st.dataframe(
         df, 
-        width='stretch', 
+        use_container_width=True,  # Ocupar toda largura disponível
         hide_index=True,
         height=600  # Altura aumentada para desktop
     )
@@ -270,7 +270,7 @@ def exibir_resultados_emissao(resultados: List[Dict]):
     df = pd.DataFrame(tabela)
     st.dataframe(
         df, 
-        width='stretch', 
+        use_container_width=True,  # Ocupar toda largura disponível
         hide_index=True,
         height=600  # Altura aumentada para desktop
     )
