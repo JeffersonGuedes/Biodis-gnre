@@ -12,6 +12,7 @@ from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
@@ -101,7 +102,7 @@ class GNREBot:
                 service = Service(ChromeDriverManager().install())
             
             self.driver = webdriver.Chrome(service=service, options=options)
-            self.wait = WebDriverWait(self.driver, 40)
+            self.wait = WebDriverWait(self.driver, 45)  # Aumentado para Cloud
             print("✅ Driver OK")
         except Exception as e:
             raise Exception(f"Erro driver: {e}")
@@ -109,39 +110,57 @@ class GNREBot:
     # --- NOVA LÓGICA DE CLIQUE MAIS AGRESSIVA ---
     def _clicar_seguro(self, locator_tuple=None, element=None, nome_elemento="elemento"):
         """
-        Tenta clicar de 3 formas diferentes para garantir a interação
+        Tenta clicar de múltiplas formas para garantir a interação
         """
         try:
             # 1. Obter o elemento se não foi passado
             if element is None:
-                # Usar presence, pois element_to_be_clickable falha se o elemento estiver coberto
-                element = self.wait.until(EC.presence_of_element_located(locator_tuple))
+                # Aguardar elemento estar CLICÁVEL (enabled + visible + not covered)
+                try:
+                    element = self.wait.until(EC.element_to_be_clickable(locator_tuple))
+                except TimeoutException:
+                    # Fallback: aguardar apenas presença
+                    element = self.wait.until(EC.presence_of_element_located(locator_tuple))
             
-            # 2. Scroll para garantir que está na viewport
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-            time.sleep(0.5)
+            # 2. Forçar visibilidade do elemento
+            self.driver.execute_script("""
+                arguments[0].style.display = 'block';
+                arguments[0].style.visibility = 'visible';
+                arguments[0].style.opacity = '1';
+            """, element)
+            
+            # 3. Scroll para garantir que está na viewport
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", element)
+            time.sleep(0.8)
 
-            # 3. Tentativa Nuclear: JavaScript direto (Melhor para Headless)
-            # Em headless, cliques normais falham muito em inputs escondidos/estilizados
+            # 4. Tentativa 1: JavaScript Click (mais confiável em headless)
             try:
                 self.driver.execute_script("arguments[0].click();", element)
-                return # Se o JS funcionou, ótimo
+                time.sleep(0.3)
+                return
             except Exception as e_js:
                 print(f"  ⚠️ JS Click falhou para {nome_elemento}: {e_js}")
 
-            # 4. Se JS falhou (raro), tenta clique normal ActionChains
+            # 5. Tentativa 2: Click normal do Selenium
             try:
                 element.click()
-            except Exception:
-                # Última tentativa: ActionChains
-                from selenium.webdriver.common.action_chains import ActionChains
+                time.sleep(0.3)
+                return
+            except Exception as e_click:
+                print(f"  ⚠️ Click normal falhou para {nome_elemento}: {e_click}")
+
+            # 6. Tentativa 3: ActionChains
+            try:
                 actions = ActionChains(self.driver)
-                actions.move_to_element(element).click().perform()
+                actions.move_to_element(element).pause(0.5).click().perform()
+                time.sleep(0.3)
+                return
+            except Exception as e_action:
+                print(f"  ⚠️ ActionChains falhou para {nome_elemento}: {e_action}")
+                raise
 
         except Exception as e:
-            # Se tudo falhar, não crasha imediatamente, tenta seguir
-            print(f"  ❌ Erro ao clicar em {nome_elemento}: {str(e)}")
-            # Salva print para debug
+            print(f"  ❌ ERRO CRÍTICO ao clicar em {nome_elemento}: {str(e)}")
             self._screenshot(f"erro_clique_{nome_elemento}")
             raise Exception(f"Impossível interagir com {nome_elemento}: {str(e)}")
 
@@ -193,20 +212,24 @@ class GNREBot:
             Select(elem_uf).select_by_value(dados['uf_destino'])
             time.sleep(2.5) # AUMENTEI O TEMPO: Carregamento AJAX da UF demora
 
-            # 2. GNRE Simples (Radio)
-            # Tentar clicar no LABEL se o ID falhar, ou usar JS no ID
-            try:
-                radio_simples = self.driver.find_element(By.ID, "optGnreSimples")
-                self._clicar_seguro(element=radio_simples, nome_elemento="Radio Simples")
-            except: pass 
+            # 2. GNRE Simples (Radio) - Aguardar habilitação
+            print("📄 Aguardando radio GNRE Simples...")
+            radio_simples = self.wait.until(EC.element_to_be_clickable((By.ID, "optGnreSimples")))
+            self._clicar_seguro(element=radio_simples, nome_elemento="Radio Simples")
+            time.sleep(1)
 
             # 3. Contribuinte: Não Inscrito (Radio)
+            print("📄 Aguardando radio Não Inscrito...")
             time.sleep(1)
-            self._clicar_seguro(locator_tuple=(By.ID, "optNaoInscrito"), nome_elemento="Radio Nao Inscrito")
+            radio_nao_inscrito = self.wait.until(EC.element_to_be_clickable((By.ID, "optNaoInscrito")))
+            self._clicar_seguro(element=radio_nao_inscrito, nome_elemento="Radio Nao Inscrito")
+            time.sleep(1)
             
             # 4. Tipo Doc: CNPJ (Radio)
-            time.sleep(0.5)
-            self._clicar_seguro(locator_tuple=(By.ID, "tipoCNPJ"), nome_elemento="Radio CNPJ")
+            print("📄 Aguardando radio CNPJ...")
+            radio_cnpj = self.wait.until(EC.element_to_be_clickable((By.ID, "tipoCNPJ")))
+            self._clicar_seguro(element=radio_cnpj, nome_elemento="Radio CNPJ")
+            time.sleep(1)
 
             # 5. CNPJ Emitente
             cnpj = ''.join(filter(str.isdigit, dados['cnpj_emitente']))
@@ -264,14 +287,33 @@ class GNREBot:
             elem_valor.send_keys(valor)
             # Forçar update do valor
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", elem_valor)
-            time.sleep(1) # Esperar o site processar o valor para habilitar o destinatário
+            self.driver.execute_script("arguments[0].blur();", elem_valor)  # Trigger onblur
+            time.sleep(2.5) # AUMENTADO: Esperar o site processar o valor e habilitar destinatário
 
-            # 18. Destinatário Não Inscrito (O PONTO DE ERRO)
-            print("👤 Selecionando Destinatário...")
-            self._clicar_seguro(locator_tuple=(By.ID, "optNaoInscritoDest"), nome_elemento="Radio Destinatário Nao Inscrito")
+            # 18. Destinatário Não Inscrito (PONTO CRÍTICO - AGUARDAR HABILITAÇÃO)
+            print("👤 Aguardando habilitação dos campos de Destinatário...")
             
-            time.sleep(1)
-            self._clicar_seguro(locator_tuple=(By.ID, "tipoCPFDest"), nome_elemento="Radio CPF Destinatário")
+            # Aguardar explicitamente o elemento estar habilitado
+            radio_dest = self.wait.until(EC.presence_of_element_located((By.ID, "optNaoInscritoDest")))
+            for tentativa in range(10):
+                if radio_dest.is_enabled() and radio_dest.is_displayed():
+                    break
+                time.sleep(0.5)
+            
+            print("👤 Selecionando Destinatário Não Inscrito...")
+            self._clicar_seguro(element=radio_dest, nome_elemento="Radio Destinatário Nao Inscrito")
+            
+            time.sleep(1.5)
+            
+            # Aguardar radio CPF estar habilitado
+            radio_cpf = self.wait.until(EC.presence_of_element_located((By.ID, "tipoCPFDest")))
+            for tentativa in range(10):
+                if radio_cpf.is_enabled() and radio_cpf.is_displayed():
+                    break
+                time.sleep(0.5)
+            
+            print("👤 Selecionando CPF...")
+            self._clicar_seguro(element=radio_cpf, nome_elemento="Radio CPF Destinatário")
 
             # 19. CPF Destinatário
             cpf_dest = ''.join(filter(str.isdigit, dados.get('documento_destinatario', '')))
