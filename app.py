@@ -171,7 +171,7 @@ def exibir_tabela_dados(dados_extraidos: List[Dict]):
         df, 
         width='stretch', 
         hide_index=True,
-        height=400  # Altura fixa para melhor visualização
+        height=600  # Altura aumentada para desktop
     )
     
     return df
@@ -272,7 +272,7 @@ def exibir_resultados_emissao(resultados: List[Dict]):
         df, 
         width='stretch', 
         hide_index=True,
-        height=400  # Mesma altura da tabela de processamento
+        height=600  # Altura aumentada para desktop
     )
     
     # Estatísticas
