@@ -15,7 +15,7 @@ apt-get update
 apt-get install -y google-chrome-stable
 
 echo "📥 Instalando ChromeDriver..."
-CHROMEDRIVER_VERSION=131.0.6778.87
+CHROMEDRIVER_VERSION=143.0.7499.40
 wget -q "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" -O /tmp/chromedriver.zip
 unzip -q /tmp/chromedriver.zip -d /tmp/
 mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/
