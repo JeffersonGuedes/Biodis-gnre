@@ -100,51 +100,94 @@ class GNREBot:
                 service = Service(ChromeDriverManager().install())
             
             self.driver = webdriver.Chrome(service=service, options=options)
-            self.wait = WebDriverWait(self.driver, 45)
+            self.wait = WebDriverWait(self.driver, 60)  # AUMENTADO para Cloud
             print("✅ Driver OK")
         except Exception as e:
             raise Exception(f"Erro driver: {e}")
 
-    def _clicar_seguro(self, locator_tuple=None, element=None, nome_elemento="elemento"):
-        """Tenta clicar de múltiplas formas"""
-        try:
-            if element is None:
+    def _clicar_seguro(self, locator_tuple=None, element=None, nome_elemento="elemento", max_tentativas=3):
+        """Tenta clicar com múltiplas estratégias e retries"""
+        for tentativa in range(max_tentativas):
+            try:
+                # 1. Obter elemento
+                if element is None:
+                    try:
+                        element = self.wait.until(EC.element_to_be_clickable(locator_tuple))
+                    except TimeoutException:
+                        element = self.wait.until(EC.presence_of_element_located(locator_tuple))
+                
+                # 2. Verificar se está habilitado (para radios/checkboxes)
+                if element.tag_name in ['input']:
+                    for _ in range(15):  # Esperar até 7.5s
+                        if element.is_enabled() and element.is_displayed():
+                            break
+                        time.sleep(0.5)
+                
+                # 3. Forçar visibilidade
                 try:
-                    element = self.wait.until(EC.element_to_be_clickable(locator_tuple))
-                except TimeoutException:
-                    element = self.wait.until(EC.presence_of_element_located(locator_tuple))
-            
-            self.driver.execute_script("""
-                arguments[0].style.display = 'block';
-                arguments[0].style.visibility = 'visible';
-                arguments[0].style.opacity = '1';
-            """, element)
-            
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", element)
-            time.sleep(0.8)
+                    self.driver.execute_script("""
+                        arguments[0].style.display = 'block';
+                        arguments[0].style.visibility = 'visible';
+                        arguments[0].style.opacity = '1';
+                        arguments[0].disabled = false;
+                    """, element)
+                except:
+                    pass
+                
+                # 4. Scroll
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", element)
+                    time.sleep(1)
+                except:
+                    pass
 
-            try:
-                self.driver.execute_script("arguments[0].click();", element)
-                time.sleep(0.3)
-                return
-            except Exception as e_js:
-                print(f"  ⚠️ JS Click falhou: {e_js}")
+                # 5. TENTATIVA 1: JavaScript Click (mais confiável)
+                try:
+                    self.driver.execute_script("arguments[0].click();", element)
+                    time.sleep(0.5)
+                    print(f"  ✅ {nome_elemento} OK (JS)")
+                    return True
+                except Exception as e_js:
+                    if tentativa < max_tentativas - 1:
+                        print(f"  ⚠️ JS falhou tentativa {tentativa+1}: {e_js}")
 
-            try:
-                element.click()
-                time.sleep(0.3)
-                return
-            except Exception as e_click:
-                print(f"  ⚠️ Click normal falhou: {e_click}")
+                # 6. TENTATIVA 2: Click normal
+                try:
+                    element.click()
+                    time.sleep(0.5)
+                    print(f"  ✅ {nome_elemento} OK (normal)")
+                    return True
+                except Exception as e_click:
+                    if tentativa < max_tentativas - 1:
+                        print(f"  ⚠️ Click falhou tentativa {tentativa+1}: {e_click}")
 
-            actions = ActionChains(self.driver)
-            actions.move_to_element(element).pause(0.5).click().perform()
-            time.sleep(0.3)
+                # 7. TENTATIVA 3: ActionChains
+                try:
+                    actions = ActionChains(self.driver)
+                    actions.move_to_element(element).pause(0.5).click().perform()
+                    time.sleep(0.5)
+                    print(f"  ✅ {nome_elemento} OK (ActionChains)")
+                    return True
+                except Exception as e_action:
+                    if tentativa < max_tentativas - 1:
+                        print(f"  ⚠️ ActionChains falhou tentativa {tentativa+1}: {e_action}")
 
-        except Exception as e:
-            print(f"  ❌ ERRO ao clicar em {nome_elemento}: {str(e)}")
-            self._screenshot(f"erro_clique_{nome_elemento}")
-            raise Exception(f"Impossível interagir com {nome_elemento}: {str(e)}")
+                # Se chegou aqui e não é a última tentativa, aguardar e re-localizar elemento
+                if tentativa < max_tentativas - 1:
+                    print(f"  🔄 Aguardando antes de tentar novamente...")
+                    time.sleep(2)
+                    element = None  # Forçar re-localização
+
+            except Exception as e:
+                if tentativa < max_tentativas - 1:
+                    print(f"  ⚠️ Tentativa {tentativa+1} falhou: {str(e)}")
+                    time.sleep(2)
+                else:
+                    print(f"  ❌ TODAS tentativas falharam para {nome_elemento}: {str(e)}")
+                    self._screenshot(f"erro_clique_{nome_elemento}")
+                    raise Exception(f"Impossível interagir com {nome_elemento} após {max_tentativas} tentativas: {str(e)}")
+        
+        return False
 
     def _aguardar_loading(self):
         time.sleep(1.5)
@@ -199,25 +242,29 @@ class GNREBot:
             print(f"📍 UF Destino: {dados['uf_destino']}")
             elem_uf = self.wait.until(EC.presence_of_element_located((By.NAME, "siglaUf")))
             Select(elem_uf).select_by_value(dados['uf_destino'])
-            time.sleep(2.5)
+            print(f"  📍 Aguardando AJAX carregar municípios...")
+            time.sleep(3.5)  # AUMENTADO: AJAX da UF
 
             # 2. GNRE Simples (Radio)
-            print("📄 GNRE Simples...")
-            radio_simples = self.wait.until(EC.element_to_be_clickable((By.ID, "optGnreSimples")))
-            self._clicar_seguro(element=radio_simples, nome_elemento="Radio Simples")
+            print("📄 Aguardando radio GNRE Simples...")
             time.sleep(1)
+            radio_simples = self.wait.until(EC.element_to_be_clickable((By.ID, "optGnreSimples")))
+            self._clicar_seguro(element=radio_simples, nome_elemento="Radio Simples", max_tentativas=3)
+            time.sleep(1.5)
 
             # 3. Contribuinte: Não Inscrito (Radio)
-            print("👤 Não Inscrito...")
-            radio_nao_inscrito = self.wait.until(EC.element_to_be_clickable((By.ID, "optNaoInscrito")))
-            self._clicar_seguro(element=radio_nao_inscrito, nome_elemento="Radio Nao Inscrito")
+            print("👤 Aguardando radio Não Inscrito...")
             time.sleep(1)
+            radio_nao_inscrito = self.wait.until(EC.element_to_be_clickable((By.ID, "optNaoInscrito")))
+            self._clicar_seguro(element=radio_nao_inscrito, nome_elemento="Radio Nao Inscrito", max_tentativas=3)
+            time.sleep(1.5)
             
             # 4. Tipo Doc: CNPJ (Radio)
-            print("🏢 CNPJ...")
-            radio_cnpj = self.wait.until(EC.element_to_be_clickable((By.ID, "tipoCNPJ")))
-            self._clicar_seguro(element=radio_cnpj, nome_elemento="Radio CNPJ")
+            print("🏢 Aguardando radio CNPJ...")
             time.sleep(1)
+            radio_cnpj = self.wait.until(EC.element_to_be_clickable((By.ID, "tipoCNPJ")))
+            self._clicar_seguro(element=radio_cnpj, nome_elemento="Radio CNPJ", max_tentativas=3)
+            time.sleep(1.5)
 
             # 5. CNPJ Emitente
             cnpj = ''.join(filter(str.isdigit, dados['cnpj_emitente']))
@@ -252,8 +299,10 @@ class GNREBot:
             self.driver.find_element(By.ID, "cepEmitente").send_keys(''.join(filter(str.isdigit, dados.get('cep_emitente', ''))))
 
             # 11. Receita 100102
+            print(f"  💰 Selecionando Receita 100102...")
             Select(self.driver.find_element(By.ID, "receita")).select_by_value("100102")
-            time.sleep(2.5)
+            print(f"  💰 Aguardando AJAX carregar campos da receita...")
+            time.sleep(3.5)  # AUMENTADO: AJAX da Receita
 
             # 12. Doc Origem
             elem_doc = self.wait.until(EC.presence_of_element_located((By.NAME, "gnre.dadosGnre.itens[0].documentoOrigem.tipo")))
@@ -275,33 +324,66 @@ class GNREBot:
             valor = str(dados.get('valor_icms', '0.00')).replace('.', ',')
             elem_valor = self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].valores[0].valor")
             elem_valor.clear()
+            time.sleep(0.5)
             elem_valor.send_keys(valor)
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", elem_valor)
-            self.driver.execute_script("arguments[0].blur();", elem_valor)
-            time.sleep(2.5)
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('blur'));", elem_valor)
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('input'));", elem_valor)
+            print(f"  💰 Valor preenchido: {valor} - Aguardando habilitar campos...")
+            time.sleep(3.5)  # AUMENTADO: Aguardar processamento completo
 
-            # 18. Destinatário Não Inscrito (AGUARDAR HABILITAÇÃO)
-            print("👤 Aguardando habilitar Destinatário...")
+            # 18. Destinatário Não Inscrito (ESPERA ULTRA-LONGA)
+            print("👤 Aguardando formulário processar valor e habilitar Destinatário...")
+            
+            # Espera extra para garantir que AJAX terminou
+            time.sleep(2)
+            
+            # Localizar elemento
             radio_dest = self.wait.until(EC.presence_of_element_located((By.ID, "optNaoInscritoDest")))
-            for _ in range(10):
-                if radio_dest.is_enabled() and radio_dest.is_displayed():
-                    break
+            
+            # Loop de verificação AUMENTADO
+            habilitado = False
+            for tentativa in range(20):  # 20 tentativas = 10 segundos
+                try:
+                    if radio_dest.is_enabled() and radio_dest.is_displayed():
+                        # Verificar também se não está readonly
+                        readonly = self.driver.execute_script("return arguments[0].readOnly || arguments[0].disabled;", radio_dest)
+                        if not readonly:
+                            habilitado = True
+                            print(f"  ✅ Destinatário habilitado após {tentativa * 0.5}s")
+                            break
+                except:
+                    pass
                 time.sleep(0.5)
             
-            print("👤 Selecionando Destinatário...")
-            self._clicar_seguro(element=radio_dest, nome_elemento="Radio Destinatário")
+            if not habilitado:
+                print("  ⚠️ Destinatário pode não estar habilitado, tentando mesmo assim...")
+            
+            print("👤 Selecionando Destinatário Não Inscrito...")
+            self._clicar_seguro(element=radio_dest, nome_elemento="Radio Destinatário", max_tentativas=5)
+            time.sleep(2)
+            
+            # 19. CPF Destinatário (ESPERA EXTRA)
+            print("👤 Aguardando radio CPF habilitar...")
             time.sleep(1.5)
             
-            # 19. CPF Destinatário
             radio_cpf = self.wait.until(EC.presence_of_element_located((By.ID, "tipoCPFDest")))
-            for _ in range(10):
-                if radio_cpf.is_enabled() and radio_cpf.is_displayed():
-                    break
+            
+            # Loop de verificação
+            for tentativa in range(20):
+                try:
+                    if radio_cpf.is_enabled() and radio_cpf.is_displayed():
+                        readonly = self.driver.execute_script("return arguments[0].readOnly || arguments[0].disabled;", radio_cpf)
+                        if not readonly:
+                            print(f"  ✅ Radio CPF habilitado após {tentativa * 0.5}s")
+                            break
+                except:
+                    pass
                 time.sleep(0.5)
             
             print("👤 Selecionando CPF...")
-            self._clicar_seguro(element=radio_cpf, nome_elemento="Radio CPF")
-            time.sleep(1)
+            self._clicar_seguro(element=radio_cpf, nome_elemento="Radio CPF", max_tentativas=5)
+            time.sleep(1.5)
 
             # 20. CPF
             cpf_dest = ''.join(filter(str.isdigit, dados.get('documento_destinatario', '')))
