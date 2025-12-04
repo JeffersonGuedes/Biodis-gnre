@@ -272,8 +272,11 @@ def exibir_resultados_emissao(resultados: List[Dict]):
         df, 
         use_container_width=True,  # Ocupar toda largura disponível
         hide_index=True,
-        height=600  # Altura aumentada para desktop
+        height=600,  # Altura aumentada para desktop
+        width=1000
     )
+
+    
     
     # Estatísticas
     col1, col2, col3 = st.columns(3)

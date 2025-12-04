@@ -11,14 +11,12 @@ from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementNotInteractableException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.os_manager import ChromeType
 
 
 # Lista de feriados nacionais (adicione mais conforme necessário)
@@ -171,150 +169,157 @@ class GNREBot:
     
     def _inicializar_driver(self):
         """Inicializa o driver do Selenium"""
-        print("🚀 Inicializando driver...")
         options = webdriver.ChromeOptions()
+        
+        # Detectar se está rodando no Streamlit Cloud (Linux)
         is_linux = sys.platform.startswith('linux')
         
         if self.headless or is_linux:
             options.add_argument('--headless')
         
-        # Argumentos cruciais para evitar erros de renderização
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--start-maximized')
-        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--disable-extensions')
         
+        # Configurar download para pasta Downloads do usuário
         prefs = {
             "download.default_directory": str(self.dir_downloads.absolute()),
             "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "safebrowsing.enabled": True,
             "plugins.always_open_pdf_externally": True
         }
         options.add_experimental_option("prefs", prefs)
         
-        try:
-            if is_linux:
-                print("🐧 Linux Cloud Detectado")
-                options.binary_location = "/usr/bin/chromium"
-                service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+        # Streamlit Cloud (Linux) - usar chromium do sistema
+        if is_linux:
+            print("🐧 Detectado ambiente Linux (Streamlit Cloud)")
+            
+            # Procurar chromedriver no sistema
+            chrome_driver_paths = [
+                '/usr/bin/chromedriver',
+                '/usr/local/bin/chromedriver',
+                '/home/appuser/.local/bin/chromedriver',
+            ]
+            
+            driver_path = None
+            for path in chrome_driver_paths:
+                if os.path.exists(path):
+                    driver_path = path
+                    print(f"✅ ChromeDriver encontrado: {path}")
+                    break
+            
+            if driver_path:
+                # Configurar chromium binary
+                options.binary_location = '/usr/bin/chromium'
+                service = Service(executable_path=driver_path)
             else:
+                # Fallback: tentar webdriver-manager
+                print("⚠️ ChromeDriver não encontrado no sistema, tentando webdriver-manager...")
                 service = Service(ChromeDriverManager().install())
-            
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.wait = WebDriverWait(self.driver, 45)  # Aumentado para Cloud
-            print("✅ Driver OK")
-        except Exception as e:
-            raise Exception(f"Erro driver: {e}")
-
-    # --- LÓGICA DE CLIQUE BLINDADA ---
-    def _clicar_seguro(self, locator_tuple=None, element=None, nome_elemento="elemento"):
-        """
-        Tenta clicar de múltiplas formas para garantir a interação
-        """
-        try:
-            # 1. Obter o elemento se não foi passado
-            if element is None:
-                # Aguardar elemento estar CLICÁVEL (enabled + visible + not covered)
-                try:
-                    element = self.wait.until(EC.element_to_be_clickable(locator_tuple))
-                except TimeoutException:
-                    # Fallback: aguardar apenas presença
-                    element = self.wait.until(EC.presence_of_element_located(locator_tuple))
-            
-            # 2. Forçar visibilidade do elemento
-            self.driver.execute_script("""
-                arguments[0].style.display = 'block';
-                arguments[0].style.visibility = 'visible';
-                arguments[0].style.opacity = '1';
-            """, element)
-            
-            # 3. Scroll para garantir que está na viewport
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", element)
-            time.sleep(0.8)
-
-            # 4. Tentativa 1: JavaScript Click (mais confiável em headless)
-            try:
-                self.driver.execute_script("arguments[0].click();", element)
-                time.sleep(0.3)
-                return
-            except Exception as e_js:
-                print(f"  ⚠️ JS Click falhou para {nome_elemento}: {e_js}")
-
-            # 5. Tentativa 2: Click normal do Selenium
-            try:
-                element.click()
-                time.sleep(0.3)
-                return
-            except Exception as e_click:
-                print(f"  ⚠️ Click normal falhou para {nome_elemento}: {e_click}")
-
-            # 6. Tentativa 3: ActionChains
-            try:
-                actions = ActionChains(self.driver)
-                actions.move_to_element(element).pause(0.5).click().perform()
-                time.sleep(0.3)
-                return
-            except Exception as e_action:
-                print(f"  ⚠️ ActionChains falhou para {nome_elemento}: {e_action}")
-                raise
-
-        except Exception as e:
-            print(f"  ❌ ERRO CRÍTICO ao clicar em {nome_elemento}: {str(e)}")
-            self._screenshot(f"erro_clique_{nome_elemento}")
-            raise Exception(f"Impossível interagir com {nome_elemento}: {str(e)}")
-
-    def _aguardar_loading(self):
-        """Espera cega para garantir que animações terminaram"""
-        time.sleep(1.5)
+        else:
+            # Windows/Mac - usar webdriver-manager
+            print("💻 Detectado ambiente local (Windows/Mac)")
+            service = Service(ChromeDriverManager().install())
+        
+        self.driver = webdriver.Chrome(service=service, options=options)
+        self.wait = WebDriverWait(self.driver, 60)
     
     def _screenshot(self, nome):
         """Salva screenshot se habilitado"""
         if self.salvar_evidencias and self.driver:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             caminho = self.dir_screenshots / f"{timestamp}_{nome}.png"
-            try:
-                self.driver.save_screenshot(str(caminho))
-            except:
-                pass
+            self.driver.save_screenshot(str(caminho))
+            print(f"📸 Screenshot salvo: {nome}")
+    
+    def _salvar_evidencia(self, nome):
+        """Alias para _screenshot - para compatibilidade"""
+        self._screenshot(nome)
     
     def emitir_gnre(self, usuario, senha, dados, callback_progresso=None):
         """
         Emite GNRE automaticamente SEM LOGIN
+        
+        Args:
+            usuario (str): NÃO USADO - mantido por compatibilidade
+            senha (str): NÃO USADO - mantido por compatibilidade
+            dados (dict): Dados extraídos da NF-e
+            callback_progresso (callable): Função para atualizar progresso
+        
+        Returns:
+            dict: Resultado da emissão
         """
         try:
             if not self.driver:
                 self._inicializar_driver()
             
+            # Etapa 1: Acessar página de emissão diretamente
             if callback_progresso:
-                callback_progresso("Acessando...", 0.1)
+                callback_progresso("Acessando formulário GNRE...", 0.1)
+            
+            print(f"🌐 Acessando: {self.url_emissao}")
             self.driver.get(self.url_emissao)
-            self._aguardar_loading()
+            print("⏳ Aguardando página carregar completamente...")
+            time.sleep(2)  # Aguardar mais tempo para página carregar
+            self._screenshot("01_formulario_inicial")
             
+            # Etapa 2: Preencher formulário
             if callback_progresso:
-                callback_progresso("Preenchendo...", 0.3)
+                callback_progresso("Preenchendo formulário...", 0.3)
+            
+            print("✍️ Preenchendo dados do formulário...")
             self._preencher_formulario(dados)
-            self._screenshot("01_preenchido")
+            self._screenshot("02_formulario_preenchido")
             
+            # Etapa 3: Validar formulário
             if callback_progresso:
-                callback_progresso("Validando...", 0.5)
+                callback_progresso("Validando dados...", 0.5)
+            
+            print("🔍 Validando formulário...")
             self._validar_formulario()
-            self._screenshot("02_validado")
+            self._screenshot("03_formulario_validado")
             
+            # Etapa 4: Baixar PDF
             if callback_progresso:
-                callback_progresso("Baixando...", 0.8)
-            pdf = self._baixar_pdf(dados['numero_nfe'])
+                callback_progresso("Baixando PDF...", 0.7)
             
+            print("📥 Baixando PDF...")
+            pdf_path = self._baixar_pdf(dados['numero_nfe'])
+            self._screenshot("04_pdf_baixado")
+            
+            # Etapa 5: Clicar em "Nova GNRE" para próxima
+            if callback_progresso:
+                callback_progresso("Preparando para próxima GNRE...", 0.9)
+            
+            print("🔄 Clicando em Nova GNRE...")
             self._nova_gnre()
-            if callback_progresso:
-                callback_progresso("Fim!", 1.0)
             
-            return {'sucesso': True, 'arquivo_pdf': pdf}
+            if callback_progresso:
+                callback_progresso("Concluído!", 1.0)
+            
+            print("✅ GNRE emitida com sucesso!")
+            
+            return {
+                'sucesso': True,
+                'arquivo_pdf': pdf_path,
+                'numero_gnre': 'Gerado',
+                'protocolo': None
+            }
             
         except Exception as e:
-            print(f"❌ Erro Geral: {e}")
-            self._screenshot("erro_fatal")
-            return {'sucesso': False, 'mensagem': str(e)}
+            print(f"❌ Erro: {str(e)}")
+            self._screenshot("erro")
+            import traceback
+            traceback.print_exc()
+            return {
+                'sucesso': False,
+                'mensagem': str(e)
+            }
     
     def _preencher_formulario(self, dados):
         """
