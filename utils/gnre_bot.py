@@ -195,15 +195,33 @@ class GNREBot:
         }
         options.add_experimental_option("prefs", prefs)
         
-        # Streamlit Cloud (Linux) - usar chromium do sistema
+        # Streamlit Cloud ou Render (Linux) - usar chrome do sistema
         if is_linux:
-            print("🐧 Detectado ambiente Linux (Streamlit Cloud)")
+            print("🐧 Detectado ambiente Linux (Cloud)")
+            
+            # Procurar chrome/chromium binary
+            chrome_binaries = [
+                '/usr/bin/google-chrome',  # Render.com
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/chromium',  # Streamlit Cloud
+                '/usr/bin/chromium-browser'
+            ]
+            
+            chrome_binary = None
+            for binary in chrome_binaries:
+                if os.path.exists(binary):
+                    chrome_binary = binary
+                    print(f"✅ Chrome encontrado: {binary}")
+                    break
+            
+            if chrome_binary:
+                options.binary_location = chrome_binary
             
             # Procurar chromedriver no sistema
             chrome_driver_paths = [
+                '/usr/local/bin/chromedriver',  # Render.com
                 '/usr/bin/chromedriver',
-                '/usr/local/bin/chromedriver',
-                '/home/appuser/.local/bin/chromedriver',
+                '/home/appuser/.local/bin/chromedriver',  # Streamlit Cloud
             ]
             
             driver_path = None
@@ -214,12 +232,10 @@ class GNREBot:
                     break
             
             if driver_path:
-                # Configurar chromium binary
-                options.binary_location = '/usr/bin/chromium'
                 service = Service(executable_path=driver_path)
             else:
                 # Fallback: tentar webdriver-manager
-                print("⚠️ ChromeDriver não encontrado no sistema, tentando webdriver-manager...")
+                print("⚠️ ChromeDriver não encontrado, tentando webdriver-manager...")
                 service = Service(ChromeDriverManager().install())
         else:
             # Windows/Mac - usar webdriver-manager
