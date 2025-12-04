@@ -1,6 +1,6 @@
 """
 Bot de automação para emissão de GNRE no portal
-BLINDADO CONTRA ERROS "ELEMENT NOT INTERACTABLE"
+BLINDADO CONTRA ERROS "ELEMENT NOT INTERACTABLE" - VERSÃO 2.0
 """
 
 import time
@@ -17,7 +17,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementNotInteractableException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementNotInteractableException, StaleElementReferenceException
 
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.core.os_manager import ChromeType
@@ -77,11 +77,13 @@ class GNREBot:
         if self.headless or is_linux:
             options.add_argument('--headless')
         
+        # Argumentos cruciais para evitar erros de renderização
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080') # Essencial para não esconder elementos
+        options.add_argument('--window-size=1920,1080')
         options.add_argument('--start-maximized')
+        options.add_argument('--ignore-certificate-errors')
         
         prefs = {
             "download.default_directory": str(self.dir_downloads.absolute()),
@@ -104,33 +106,48 @@ class GNREBot:
         except Exception as e:
             raise Exception(f"Erro driver: {e}")
 
-    # --- FUNÇÕES DE SEGURANÇA (JavaScript Click) ---
-    def _clicar_seguro(self, locator_tuple=None, element=None):
-        """Tenta clicar normalmente, se falhar, usa JavaScript (Nuclear)"""
+    # --- NOVA LÓGICA DE CLIQUE MAIS AGRESSIVA ---
+    def _clicar_seguro(self, locator_tuple=None, element=None, nome_elemento="elemento"):
+        """
+        Tenta clicar de 3 formas diferentes para garantir a interação
+        """
         try:
+            # 1. Obter o elemento se não foi passado
             if element is None:
+                # Usar presence, pois element_to_be_clickable falha se o elemento estiver coberto
                 element = self.wait.until(EC.presence_of_element_located(locator_tuple))
             
-            # Tentar scroll até o elemento
+            # 2. Scroll para garantir que está na viewport
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
             time.sleep(0.5)
-            
+
+            # 3. Tentativa Nuclear: JavaScript direto (Melhor para Headless)
+            # Em headless, cliques normais falham muito em inputs escondidos/estilizados
             try:
-                element.click() # Tentativa normal
-            except (ElementNotInteractableException, Exception):
-                # Se falhar (bloqueio ou oculto), usa JS
-                print(f"  ⚠️ Clique normal falhou, forçando JS no elemento...")
                 self.driver.execute_script("arguments[0].click();", element)
+                return # Se o JS funcionou, ótimo
+            except Exception as e_js:
+                print(f"  ⚠️ JS Click falhou para {nome_elemento}: {e_js}")
+
+            # 4. Se JS falhou (raro), tenta clique normal ActionChains
+            try:
+                element.click()
+            except Exception:
+                # Última tentativa: ActionChains
+                from selenium.webdriver.common.action_chains import ActionChains
+                actions = ActionChains(self.driver)
+                actions.move_to_element(element).click().perform()
+
         except Exception as e:
-            raise Exception(f"Não foi possível clicar: {str(e)}")
+            # Se tudo falhar, não crasha imediatamente, tenta seguir
+            print(f"  ❌ Erro ao clicar em {nome_elemento}: {str(e)}")
+            # Salva print para debug
+            self._screenshot(f"erro_clique_{nome_elemento}")
+            raise Exception(f"Impossível interagir com {nome_elemento}: {str(e)}")
 
     def _aguardar_loading(self):
-        """Espera sumir qualquer spinner de carregamento"""
-        try:
-            # Ajuste conforme o site da GNRE (geralmente div.loading ou similar)
-            # Aqui esperamos 1s fixo para garantir que animações terminem
-            time.sleep(1)
-        except: pass
+        """Espera cega para garantir que animações terminaram"""
+        time.sleep(1.5)
 
     def _screenshot(self, nome):
         if self.salvar_evidencias and self.driver:
@@ -168,43 +185,41 @@ class GNREBot:
             return {'sucesso': False, 'mensagem': str(e)}
 
     def _preencher_formulario(self, dados):
-        """Preenchimento usando JS para evitar ElementNotInteractable"""
+        """Preenchimento Otimizado"""
         try:
             # 1. UF Favorecida
             print(f"📍 UF Destino: {dados['uf_destino']}")
-            # Às vezes o select não é interagível imediatamente
             elem_uf = self.wait.until(EC.presence_of_element_located((By.NAME, "siglaUf")))
             Select(elem_uf).select_by_value(dados['uf_destino'])
-            time.sleep(2) # Essencial para carregar os campos da UF
+            time.sleep(2.5) # AUMENTEI O TEMPO: Carregamento AJAX da UF demora
 
-            # 2. GNRE Simples (Radio) - Problemático
+            # 2. GNRE Simples (Radio)
+            # Tentar clicar no LABEL se o ID falhar, ou usar JS no ID
             try:
-                # Clicamos diretamente no input via JS
                 radio_simples = self.driver.find_element(By.ID, "optGnreSimples")
-                self._clicar_seguro(element=radio_simples)
-            except: pass # Pode já vir selecionado
+                self._clicar_seguro(element=radio_simples, nome_elemento="Radio Simples")
+            except: pass 
 
             # 3. Contribuinte: Não Inscrito (Radio)
-            # Usando clique JS pois o label costuma cobrir o input
-            self._clicar_seguro(locator_tuple=(By.ID, "optNaoInscrito"))
             time.sleep(1)
-
+            self._clicar_seguro(locator_tuple=(By.ID, "optNaoInscrito"), nome_elemento="Radio Nao Inscrito")
+            
             # 4. Tipo Doc: CNPJ (Radio)
-            self._clicar_seguro(locator_tuple=(By.ID, "tipoCNPJ"))
+            time.sleep(0.5)
+            self._clicar_seguro(locator_tuple=(By.ID, "tipoCNPJ"), nome_elemento="Radio CNPJ")
 
             # 5. CNPJ Emitente
             cnpj = ''.join(filter(str.isdigit, dados['cnpj_emitente']))
-            elem_cnpj = self.wait.until(EC.presence_of_element_located((By.ID, "documentoEmitente")))
+            elem_cnpj = self.wait.until(EC.visibility_of_element_located((By.ID, "documentoEmitente")))
             elem_cnpj.clear()
             elem_cnpj.send_keys(cnpj)
-            # Forçar evento 'change'
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", elem_cnpj)
             time.sleep(1)
 
             # 6. Razão Social
             self.driver.find_element(By.ID, "razaoSocialEmitente").send_keys(dados.get('razao_social', ''))
 
-            # 7. Endereço (tenta ID ou Name)
+            # 7. Endereço
             try: elem_end = self.driver.find_element(By.ID, "enderecoEmitente")
             except: elem_end = self.driver.find_element(By.NAME, "gnre.dadosGnre.enderecoEmitente")
             elem_end.send_keys(dados.get('endereco_emitente', ''))
@@ -223,12 +238,10 @@ class GNREBot:
             self.driver.find_element(By.ID, "cepEmitente").send_keys(''.join(filter(str.isdigit, dados.get('cep_emitente', ''))))
 
             # 11. Receita 100102
-            # Select costuma dar problema se estiver escondido, mas receita geralmente é visível
             Select(self.driver.find_element(By.ID, "receita")).select_by_value("100102")
-            time.sleep(2) # Carrega campos específicos da receita
+            time.sleep(2.5) # AUMENTEI O TEMPO: Carregamento AJAX da Receita
 
-            # 12. Doc Origem (01 - Avulsa)
-            # Esperar aparecer, pois depende da receita
+            # 12. Doc Origem
             elem_doc = self.wait.until(EC.presence_of_element_located((By.NAME, "gnre.dadosGnre.itens[0].documentoOrigem.tipo")))
             Select(elem_doc).select_by_value("01")
 
@@ -246,14 +259,19 @@ class GNREBot:
 
             # 17. Valor
             valor = str(dados.get('valor_icms', '0.00')).replace('.', ',')
-            self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].valores[0].valor").send_keys(valor)
+            elem_valor = self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].valores[0].valor")
+            elem_valor.clear()
+            elem_valor.send_keys(valor)
+            # Forçar update do valor
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", elem_valor)
+            time.sleep(1) # Esperar o site processar o valor para habilitar o destinatário
 
-            # 18. Destinatário Não Inscrito (Radio) - Ponto Crítico de erro interactable
-            # self.driver.find_element(By.ID, "optNaoInscritoDest").click() -> CAUSA ERRO
-            self._clicar_seguro(locator_tuple=(By.ID, "optNaoInscritoDest"))
+            # 18. Destinatário Não Inscrito (O PONTO DE ERRO)
+            print("👤 Selecionando Destinatário...")
+            self._clicar_seguro(locator_tuple=(By.ID, "optNaoInscritoDest"), nome_elemento="Radio Destinatário Nao Inscrito")
             
             time.sleep(1)
-            self._clicar_seguro(locator_tuple=(By.ID, "tipoCPFDest"))
+            self._clicar_seguro(locator_tuple=(By.ID, "tipoCPFDest"), nome_elemento="Radio CPF Destinatário")
 
             # 19. CPF Destinatário
             cpf_dest = ''.join(filter(str.isdigit, dados.get('documento_destinatario', '')))
@@ -268,7 +286,7 @@ class GNREBot:
                 Select(self.driver.find_element(By.NAME, "gnre.dadosGnre.itens[0].municipioDestinatario")).select_by_visible_text(mun_dest)
             except: pass
 
-            # 22. Campo Adicional (Chave)
+            # 22. Campo Adicional
             if dados.get('chave_nfe_referenciada'):
                 try: self.driver.find_element(By.ID, "campoAdicional00").send_keys(dados['chave_nfe_referenciada'])
                 except: pass
@@ -284,10 +302,9 @@ class GNREBot:
 
     def _validar_formulario(self):
         print("⚙️ Validando...")
-        self._clicar_seguro(locator_tuple=(By.NAME, "btnValidar"))
+        self._clicar_seguro(locator_tuple=(By.NAME, "btnValidar"), nome_elemento="Botão Validar")
         time.sleep(5)
         
-        # Checar erro
         erros = self.driver.find_elements(By.CLASS_NAME, "erro")
         if erros:
             msgs = [e.text for e in erros if e.text.strip()]
@@ -295,13 +312,11 @@ class GNREBot:
 
     def _baixar_pdf(self, nfe):
         try:
-            # Tenta clicar no botão baixar (usando clique seguro)
             try:
-                self._clicar_seguro(locator_tuple=(By.NAME, "btnBaixar"))
+                self._clicar_seguro(locator_tuple=(By.NAME, "btnBaixar"), nome_elemento="Botão Baixar")
             except: 
                 print("Botão baixar não encontrado, tentando url direta...")
 
-            # Monitorar pasta
             nome_final = self.dir_downloads / f"GNRE_{nfe}.pdf"
             for _ in range(20):
                 arquivos = list(self.dir_downloads.glob("*.pdf"))
