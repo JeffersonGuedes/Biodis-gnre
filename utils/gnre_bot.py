@@ -956,18 +956,39 @@ class GNREBot:
             
             if "resultado" not in url_atual:
                 print("  ⚠️ Não está na página de resultado!")
-                print("  ℹ️ Pode ter havido erro na validação ou GNRE já gerada")
+                print("  ℹ️ Validação falhou ou GNRE já existe para esta NF-e")
                 
-                # Tentar capturar mensagem de erro
+                # Tentar capturar mensagem de erro específica
+                mensagem_erro = "Erro na validação"
                 try:
-                    erros = self.driver.find_elements(By.CLASS_NAME, "erro")
-                    if erros:
-                        for erro in erros:
-                            print(f"  ❌ Erro encontrado: {erro.text}")
-                except:
-                    pass
+                    # Procurar por diferentes tipos de mensagens de erro
+                    erros_xpath = [
+                        "//*[contains(@class, 'erro')]",
+                        "//*[contains(@class, 'error')]",
+                        "//*[contains(@class, 'alert-danger')]",
+                        "//*[contains(text(), 'já existe')]",
+                        "//*[contains(text(), 'inválido')]",
+                        "//*[contains(text(), 'obrigatório')]",
+                    ]
+                    
+                    for xpath in erros_xpath:
+                        try:
+                            erros = self.driver.find_elements(By.XPATH, xpath)
+                            if erros:
+                                for erro in erros:
+                                    texto = erro.text.strip()
+                                    if texto and len(texto) > 5:
+                                        mensagem_erro = texto[:200]  # Limitar tamanho
+                                        print(f"  ❌ Erro: {mensagem_erro}")
+                                        break
+                                if mensagem_erro != "Erro na validação":
+                                    break
+                        except:
+                            continue
+                except Exception as e:
+                    print(f"  ⚠️ Erro ao capturar mensagem: {str(e)}")
                 
-                return "GNRE_erro_validacao"
+                return f"GNRE_erro_validacao: {mensagem_erro}"
             
             # Usar timeout menor para não travar
             wait_curto = WebDriverWait(self.driver, 10)

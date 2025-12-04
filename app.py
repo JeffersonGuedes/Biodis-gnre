@@ -250,7 +250,14 @@ def exibir_resultados_emissao(resultados: List[Dict]):
         # Formatar PDF path
         pdf_info = r.get('arquivo_pdf', '-')
         if pdf_info and pdf_info not in ['-', 'None']:
-            if 'streamlit_cloud' in pdf_info or 'site_gnre' in pdf_info or 'site' in pdf_info:
+            # Se contém "erro_validacao", mostrar mensagem de erro
+            if 'GNRE_erro_validacao' in pdf_info:
+                # Extrair mensagem após os dois pontos
+                if ':' in pdf_info:
+                    pdf_display = '❌ ' + pdf_info.split(':', 1)[1].strip()
+                else:
+                    pdf_display = '❌ Erro na validação'
+            elif 'streamlit_cloud' in pdf_info or 'site_gnre' in pdf_info or 'site' in pdf_info:
                 pdf_display = '✅ Gerado no site'
             else:
                 # Pegar só o nome do arquivo
