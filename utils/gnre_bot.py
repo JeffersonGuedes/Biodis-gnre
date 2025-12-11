@@ -958,6 +958,10 @@ class GNREBot:
                 print("  ⚠️ Não está na página de resultado!")
                 print("  ℹ️ Validação falhou ou GNRE já existe para esta NF-e")
                 
+                # SALVAR SCREENSHOT DO ERRO
+                self._screenshot(f"ERRO_validacao_{numero_nfe}")
+                print("  📸 Screenshot do erro salvo")
+                
                 # Tentar capturar mensagem de erro específica
                 mensagem_erro = "Erro na validação"
                 try:
@@ -966,11 +970,15 @@ class GNREBot:
                         "//*[contains(@class, 'erro')]",
                         "//*[contains(@class, 'error')]",
                         "//*[contains(@class, 'alert-danger')]",
+                        "//*[contains(@class, 'alert')]",
                         "//*[contains(text(), 'já existe')]",
                         "//*[contains(text(), 'inválido')]",
                         "//*[contains(text(), 'obrigatório')]",
+                        "//span[@class='mensagem']",
+                        "//div[@class='mensagem']",
                     ]
                     
+                    mensagens_encontradas = []
                     for xpath in erros_xpath:
                         try:
                             erros = self.driver.find_elements(By.XPATH, xpath)
@@ -978,16 +986,28 @@ class GNREBot:
                                 for erro in erros:
                                     texto = erro.text.strip()
                                     if texto and len(texto) > 5:
-                                        mensagem_erro = texto[:200]  # Limitar tamanho
-                                        print(f"  ❌ Erro: {mensagem_erro}")
-                                        break
-                                if mensagem_erro != "Erro na validação":
-                                    break
+                                        mensagens_encontradas.append(texto)
+                                        print(f"  ❌ Mensagem encontrada: {texto[:100]}")
                         except:
                             continue
+                    
+                    # Usar a primeira mensagem relevante
+                    if mensagens_encontradas:
+                        mensagem_erro = mensagens_encontradas[0][:200]
+                    else:
+                        # Se não encontrou mensagem, tentar capturar HTML da página
+                        print("  🔍 Tentando capturar mais detalhes da página...")
+                        page_source = self.driver.page_source
+                        # Procurar por padrões comuns de erro
+                        if 'já cadastrada' in page_source.lower():
+                            mensagem_erro = "GNRE já cadastrada para esta NF-e"
+                        elif 'campo obrigatório' in page_source.lower():
+                            mensagem_erro = "Campo obrigatório não preenchido"
+                        
                 except Exception as e:
                     print(f"  ⚠️ Erro ao capturar mensagem: {str(e)}")
                 
+                print(f"  📋 Mensagem final: {mensagem_erro}")
                 return f"GNRE_erro_validacao: {mensagem_erro}"
             
             # Usar timeout menor para não travar

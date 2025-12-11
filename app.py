@@ -191,6 +191,9 @@ def processar_emissao_gnre(dados_extraidos: List[Dict], usuario: str, senha: str
     
     st.markdown("### 🤖 Processando Emissões GNRE")
     
+    # Container para logs em tempo real
+    log_container = st.expander("📋 Ver Logs Detalhados", expanded=True)
+    
     # Configurações
     headless = st.session_state.get('opcao_headless', True)
     evidencias = st.session_state.get('opcao_evidencias', True)
@@ -212,10 +215,17 @@ def processar_emissao_gnre(dados_extraidos: List[Dict], usuario: str, senha: str
             
             status_text.text(f"Processando {idx + 1}/{total}: {arquivo}")
             
-            # Callback para atualizar progresso
+            # Lista para coletar logs
+            logs_processo = []
+            
+            # Callback para atualizar progresso E mostrar logs
             def callback_progresso(msg, pct):
                 progress_bar.progress((idx + pct) / total)
                 status_text.text(f"{arquivo}: {msg}")
+                logs_processo.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+                # Atualizar logs no container
+                with log_container:
+                    st.text('\n'.join(logs_processo[-20:]))  # Últimas 20 linhas
             
             # Emitir GNRE
             resultado = bot.emitir_gnre(usuario, senha, dados, callback_progresso)
@@ -236,6 +246,8 @@ def processar_emissao_gnre(dados_extraidos: List[Dict], usuario: str, senha: str
         
     except Exception as e:
         st.error(f"❌ Erro durante o processamento: {str(e)}")
+        with log_container:
+            st.error(f"Stacktrace completo: {str(e)}")
     finally:
         bot.fechar()
 
@@ -295,6 +307,40 @@ def exibir_resultados_emissao(resultados: List[Dict]):
     with col3:
         erros = sum(1 for r in resultados if not r['sucesso'])
         st.metric("Erros", erros, delta_color="inverse")
+    
+    # Botão para baixar screenshots se houver erros
+    import sys
+    if sys.platform.startswith('linux'):  # Render.com
+        st.markdown("---")
+        st.markdown("### 📸 Screenshots e Logs (Render.com)")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Verificar se existe pasta de screenshots
+            screenshots_dir = Path("screenshots")
+            if screenshots_dir.exists():
+                screenshots = list(screenshots_dir.glob("*.png"))
+                if screenshots:
+                    st.success(f"✅ {len(screenshots)} screenshot(s) disponível(is)")
+                    # Mostrar últimas 3 screenshots
+                    screenshots_recentes = sorted(screenshots, key=lambda x: x.stat().st_mtime, reverse=True)[:3]
+                    for img in screenshots_recentes:
+                        st.image(str(img), caption=img.name, width=300)
+                else:
+                    st.warning("⚠️ Nenhum screenshot salvo")
+            else:
+                st.info("ℹ️ Pasta de screenshots não encontrada")
+        
+        with col2:
+            # Verificar logs do sistema
+            st.info("""
+            **Como ver logs no Render:**
+            1. Acesse o Dashboard do Render
+            2. Clique no seu serviço
+            3. Vá em **Logs** (menu lateral)
+            4. Procure por linhas com ❌ ou ⚠️
+            """)
     
     # Salvar em session state
     st.session_state.processados.extend(resultados)
